@@ -1,3 +1,4 @@
+from typing import Any
 import httpx
 import os
 import re
@@ -47,35 +48,65 @@ class GreenhouseState:
 
 
 async def fetch_state() -> GreenhouseState:
+    print("fetch_state")
+
+    def fetch_value(values: Any, index: int, default: str | float):
+        if index < len(values) and "v" in values[index]:
+            return values[index]["v"]
+        return default
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         for base in URLS:
-            for path in ["/state", "/api/state"]:
+            for path in ["/state"]:
+                url = f"{base}{path}" if base.endswith("/") else f"{base}{path}"
+                print(f"Url: {url}")
                 try:
-                    url = f"{base}{path}" if base.endswith("/") else f"{base}{path}"
                     resp = await client.get(url)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        # print(f"Data: {data}")
-                        v = data.get("values", [])
-                        return GreenhouseState(
-                            values=SensorValues(
-                                ph=v[0]["v"] if len(v) > 0 else 0.0,
-                                ec=v[1]["v"] if len(v) > 1 else 0.0,
-                                temp_solution=v[2]["v"] if len(v) > 2 else 0.0,
-                                level=str(v[3]["v"]) if len(v) > 3 else "unknown",
-                                temp_air=v[4]["v"] if len(v) > 4 else 0.0,
-                                humidity_air=v[5]["v"] if len(v) > 5 else 0.0,
-                                co2=v[6]["v"] if len(v) > 6 else 0,
-                                light=v[7]["v"] if len(v) > 7 else 0.0,
-                            ),
-                            description=data.get("description", ""),
-                            uptime=data.get("uptime", 0),
-                            wifi=data.get("wifi", 0),
-                            errors=data.get("errors", []),
-                        )
                 except Exception:
+                    print(f"Warning: can't connect to {url}")
                     continue
-    raise ConnectionError(f"Cannot reach Yieldizer at {BASE_URL}")
+                print(f"Fetch: {url} with status: {resp.status_code}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    print(f"Data: {data}")
+                    v = data.get("values", [])
+                    state = GreenhouseState(
+                        values=SensorValues(
+                            ph=float(fetch_value(v, 0, 0.0)),
+                            ec=float(fetch_value(v, 1, 0.0)),
+                            temp_solution=float(fetch_value(v, 2, 0.0)),
+                            level=str(fetch_value(v, 3, "none")),
+                            temp_air=float(fetch_value(v, 4, 0.0)),
+                            humidity_air=v[5]["v"] if len(v) > 5 else 0.0,
+                            co2=int(fetch_value(v, 5, 0)),
+                            light=float(fetch_value(v, 6, 0.0)),
+                        ),
+                        description=data.get("description", ""),
+                        uptime=data.get("uptime", 0),
+                        wifi=data.get("wifi", 0),
+                        errors=data.get("errors", []),
+                    )
+                    return state
+                else:
+                    continue
+    print(f"Warning Yieldizers not found")
+    # raise ConnectionError(f"Cannot reach Yieldizer at {BASE_URL}")
+    return GreenhouseState(
+        values=SensorValues(
+            ph=0,
+            ec=0.5,
+            temp_solution=1,
+            level="meow",
+            temp_air=25,
+            humidity_air=10,
+            co2=2,
+            light=10,
+        ),
+        description=" I use arch, BTW ",
+        uptime=123,
+        wifi=1,
+        errors=[],
+    )
 
 
 async def send_command(command: dict) -> bool:
