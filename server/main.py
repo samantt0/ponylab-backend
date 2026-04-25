@@ -58,19 +58,29 @@ class GreenhouseServer:
 
         try:
             state = await self.get_sensors()
+
             result = await asyncio.to_thread(analyze, image, state)
+    
+            # LOGIC модуль: корректирует и отправляет параметры в теплицу
+            adjusted = await self.controller.process(result, state)
+
             self._analysis_cache = {
                 "stage": result.growth_stage,
                 "health": result.health,
                 "disease": result.disease,
-                "params": result.recommended_params,
+                "params": adjusted,
             }
+    
+            # Логируем анализ
+            self.plant_log.log_ai_analysis(result)
+    
         except Exception as e:
+            print(f"[Server] Analysis error: {e}")
             self._analysis_cache = {
-                "stage": "unknown",
-                "health": 0.5,
-                "disease": "unavailable",
-                "params": {},
+                "stage":      "unknown",
+                "health":     0.5,
+                "disease":    "unavailable",
+                "params":  {},
                 "last_error": str(e),
             }
 
