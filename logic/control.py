@@ -28,7 +28,7 @@ class PlantRules:
         with open(path, newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                stage = row.get("stage", "default").strip().lower()
+                stage = row.get("stage", "default")
                 rules[stage] = {
                     "temp_min":     float(row.get("temp_min",     20)),
                     "temp_max":     float(row.get("temp_max",     28)),
@@ -45,10 +45,14 @@ class PlantRules:
     def _defaults(self) -> dict:
         return {
             "default": {
-                "temp_min":     20,   "temp_max":     28,
-                "humidity_min": 50,   "humidity_max": 70,
-                "ec_min":       1.2,  "ec_max":       2.5,
-                "ph_min":       5.8,  "ph_max":       6.5,
+                "temp_min": 20,
+                "temp_max": 28,
+                "humidity_min": 50,
+                "humidity_max": 70,
+                "ec_min": 1.2,
+                "ec_max": 2.5,
+                "ph_min": 5.8,
+                "ph_max": 6.5,
             }
         }
 
@@ -57,10 +61,8 @@ class PlantRules:
         Возвращает границы для стадии.
         Если стадия не найдена — ищет 'default'.
         """
-        key = stage.strip().lower()
         return self._table.get(
-            key,
-            self._table.get("default", self._defaults()["default"])
+            stage, self._table.get("default", self._defaults()["default"])
         )
 
     def adjust_ai_params(self, ai_params: dict, stage: str = "default") -> dict:
@@ -70,24 +72,21 @@ class PlantRules:
         """
         bounds = self.get_bounds(stage)
 
-        adjusted = {
-            "temp":     self._clamp(
-                ai_params.get("temp",     25),
-                bounds["temp_min"],     bounds["temp_max"]
-            ),
-            "humidity": self._clamp(
-                ai_params.get("humidity", 60),
-                bounds["humidity_min"], bounds["humidity_max"]
-            ),
-            "ec":       self._clamp(
-                ai_params.get("ec",       1.8),
-                bounds["ec_min"],       bounds["ec_max"]
-            ),
-            "ph":       self._clamp(
-                ai_params.get("ph",       6.0),
-                bounds["ph_min"],       bounds["ph_max"]
-            ),
-        }
+        adjusted = ai_params.copy()
+        adjusted["temp"] = self._clamp(
+            ai_params.get("temp", 25), bounds["temp_min"], bounds["temp_max"]
+        )
+        adjusted["humidity"] = self._clamp(
+            ai_params.get("humidity", 60),
+            bounds["humidity_min"],
+            bounds["humidity_max"],
+        )
+        adjusted["ec"] = self._clamp(
+            ai_params.get("ec", 1.8), bounds["ec_min"], bounds["ec_max"]
+        )
+        adjusted["ph"] = self._clamp(
+            ai_params.get("ph", 6.0), bounds["ph_min"], bounds["ph_max"]
+        )
 
         # Логируем что было скорректировано
         for key in adjusted:
