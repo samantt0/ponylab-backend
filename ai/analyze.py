@@ -8,6 +8,7 @@ from openai import OpenAI
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:11435/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "sk-no-key-required")
+SKIP_AI = os.getenv("LLM_SKIP", False)
 
 
 @dataclass
@@ -19,8 +20,18 @@ class AnalysisResult:
 
 
 SYSTEM_PROMPT = """Ты эксперт-агроном. Проанализируй фото растения.
-Верни СТРОГИЙ JSON без пояснений:
-{"growth_stage": "стадия роста", "health": 0.0-1.0, "disease": "здоров/название болезни", "recommended_temp": 20-30, "recommended_humidity": 40-80, "recommended_ec": 1.0-3.0, "recommended_ph": 5.5-6.5}"""
+Верни СТРОГИЙ JSON без пояснений, в полях с числом используй одно число а не диапазон:
+{
+    "growth_stage": "стадия роста",
+    "health": 0.0-1.0,
+    "disease": "здоров/название болезни",
+    "recommended_temp": 20-30,
+    "recommended_humidity": 40-80,
+    "recommended_ec": 1.0-3.0,
+    "recommended_ph": 5.5-6.5,
+    "light_duration": 12-18
+}
+"""
 
 
 def encode_image(image_bytes: bytes) -> str:
@@ -28,6 +39,20 @@ def encode_image(image_bytes: bytes) -> str:
 
 
 def analyze(image_bytes: bytes, sensor_data: dict) -> AnalysisResult:
+    if SKIP_AI:
+        print("[analyze] Warning: AI skip")
+        return AnalysisResult(
+            growth_stage="Бебебе",
+            health=0.77,
+            disease="Здоров",
+            recommended_params={
+                "temp": 77,
+                "humidity": 60,
+                "ec": 0.77,
+                "ph": 7.7,
+                "light_duration": 14,
+            },
+        )
     print(f"Prompt to {LLM_BASE_URL}")
     client = OpenAI(
         base_url=LLM_BASE_URL, api_key=LLM_API_KEY, timeout=httpx.Timeout(120000.0)
@@ -57,6 +82,7 @@ def analyze(image_bytes: bytes, sensor_data: dict) -> AnalysisResult:
     )
     print(f"response ready!")
     try:
+        content = "{'temp': 25.0, 'humidity': 70.0, 'ec': 1.5, 'ph': 6.0}"
         print(f"{response.choices}")
         data = json.loads(response.choices[0].message.content)
         print(f"Result: {data}")
@@ -69,6 +95,7 @@ def analyze(image_bytes: bytes, sensor_data: dict) -> AnalysisResult:
                 "humidity": data.get("recommended_humidity", 60),
                 "ec": data.get("recommended_ec", 1.8),
                 "ph": data.get("recommended_ph", 6.0),
+                "light_duration": data.get("light_duration", 14),
             },
         )
     except Exception as e:

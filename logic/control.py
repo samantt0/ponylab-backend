@@ -2,9 +2,13 @@ import csv
 import os
 import json
 from pathlib import Path
-from typing import Optional
-from data.yieldizer import set_parameter
-
+import trace
+from typing import Any, Optional
+from ai.analyze import AnalysisResult
+import data
+from data.models import Timer, TimerData, TableItem
+from data.yieldizer import set_parameter, send_timers
+import traceback
 
 PLANT_DATA_DIR = Path(__file__).parent.parent / "data" / "plants"
 
@@ -31,14 +35,14 @@ class PlantRules:
             for row in reader:
                 stage = row.get("stage", "default")
                 rules[stage] = {
-                    "temp_min":     float(row.get("temp_min",     20)),
-                    "temp_max":     float(row.get("temp_max",     28)),
+                    "temp_min": float(row.get("temp_min", 20)),
+                    "temp_max": float(row.get("temp_max", 28)),
                     "humidity_min": float(row.get("humidity_min", 50)),
                     "humidity_max": float(row.get("humidity_max", 70)),
-                    "ec_min":       float(row.get("ec_min",       1.2)),
-                    "ec_max":       float(row.get("ec_max",       2.5)),
-                    "ph_min":       float(row.get("ph_min",       5.8)),
-                    "ph_max":       float(row.get("ph_max",       6.5)),
+                    "ec_min": float(row.get("ec_min", 1.2)),
+                    "ec_max": float(row.get("ec_max", 2.5)),
+                    "ph_min": float(row.get("ph_min", 5.8)),
+                    "ph_max": float(row.get("ph_max", 6.5)),
                 }
         print(f"[PlantRules] Loaded stages: {list(rules.keys())}")
         return rules
@@ -95,7 +99,7 @@ class PlantRules:
             if original is not None and original != adjusted[key]:
                 print(
                     f"[PlantRules] '{key}' clamped: {original} -> {adjusted[key]}"
-                    f" (bounds: {bounds[key+'_min']} – {bounds[key+'_max']})"
+                    f" (bounds: {bounds[key + '_min']} – {bounds[key + '_max']})"
                 )
 
         return adjusted
@@ -108,10 +112,10 @@ class PlantRules:
 # Маппинг наших параметров на namespace/key в Yieldizer REST API
 # Структура: param_name -> (namespace, key)
 YIELDIZER_PARAM_MAP = {
-    "temp":     ("climate", "temp_target"),
+    "temp": ("climate", "temp_target"),
     "humidity": ("climate", "humidity_target"),
-    "ec":       ("nsolution", "ec_target"),
-    "ph":       ("nsolution", "ph_target"),
+    "ec": ("nsolution", "ec_target"),
+    "ph": ("nsolution", "ph_target"),
 }
 
 
@@ -125,10 +129,10 @@ class Controller:
 
     def __init__(self, plant_type: str = "tomato"):
         self.rules = PlantRules(plant_type)
-        self._last_params: Optional[dict] = None
-        self._last_stage: Optional[str] = None
+        self._last_params: dict[Any, Any] | None = None
+        self._last_stage: str | None = None
 
-    async def process(self, ai_result, current_sensors: dict) -> dict:
+    async def process(self, ai_result: AnalysisResult, current_sensors: dict) -> dict:
         """
         Основной метод обработки:
         1. Берёт стадию роста и рекомендации от AI
@@ -162,6 +166,25 @@ class Controller:
         Отправляет каждый параметр в теплицу через DATA модуль.
         Ошибки не останавливают обработку остальных параметров.
         """
+        try:
+            # Отправка расписания света на сервер
+            # Свет имеет только режим m=3 (расписание)
+            light_duration = int(params.get("light_duration", 16)) * 3600
+            _ = await send_timers(
+                [
+                    Timer(
+                        m=3,
+                        data=TimerData(
+                            dbegin=0,
+                            dskip=0,
+                            table=[TableItem(t1=25200, t2=light_duration)],
+                        ),
+                    )
+                ]
+            )
+        except Exception:
+            traceback.print_exc()
+
         for param_name, value in params.items():
             if param_name not in YIELDIZER_PARAM_MAP:
                 print(f"[Controller] Unknown param '{param_name}', skipping")

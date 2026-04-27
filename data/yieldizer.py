@@ -1,10 +1,14 @@
+import time
 from typing import Any
+from click import command
 import httpx
 import os
 import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from openai import BaseModel
+from data.models import Config, Env, Timer
 
 BASE_URL = os.getenv("YIELDIZER_URL", "http://127.0.0.1:3001")
 
@@ -103,16 +107,41 @@ async def fetch_state() -> GreenhouseState:
     )
 
 
+async def send_timers(timers: list[Timer]):
+    return await post(
+        "/cfg", Config(env=Env(timers=timers)).model_dump_json(exclude_none=True)
+    )
+
+
+async def post(path: str, body: str) -> bool:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        form_data = {"jdata": body}
+        for base in URLS:
+            try:
+                url = f"{base}{path}" if base.endswith("/") else f"{base}{path}"
+                print(f"POST on {url} with {body}")
+                resp = await client.post(url, data=form_data)
+                print(f"Response: {resp.status_code} {resp.text}")
+                if resp.status_code == 200:
+                    return resp.text == "ok"
+            except Exception as e:
+                print(f"Error: {e}")
+                continue
+    return False
+
+
 async def send_command(command: dict) -> bool:
     async with httpx.AsyncClient(timeout=30.0) as client:
         for base in URLS:
             for path in ["/cmd", "/api/cmd"]:
                 try:
                     url = f"{base}{path}" if base.endswith("/") else f"{base}{path}"
+                    print(f"POST on {url} with {command}")
                     resp = await client.post(url, json=command)
                     if resp.status_code == 200:
                         return resp.text == "ok"
-                except Exception:
+                except Exception as e:
+                    print(f"Error: {e}")
                     continue
     return False
 
