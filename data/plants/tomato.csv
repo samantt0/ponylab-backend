@@ -1,6 +1,6 @@
-stage,temp_min,temp_max,humidity_min,humidity_max,ec_min,ec_max,ph_min,ph_max
-seedling,22,26,70,85,0.8,1.4,6.0,6.5
-vegetative,20,26,60,75,1.2,2.0,5.8,6.3
-flowering,18,24,60,70,1.6,2.4,5.8,6.2
-fruiting,18,24,60,70,1.8,2.6,5.8,6.2
-default,20,28,50,70,1.2,2.5,5.8,6.5
+param,value,min,max
+temp,24,20,28
+humidity,60,50,70
+ec,1.8,1.2,2.5
+ph,6.2,5.8,6.5
+light_duration,16,12,18
