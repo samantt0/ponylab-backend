@@ -120,14 +120,12 @@ class Controller:
         return adjusted
 
     async def _apply_params(self, params: dict) -> None:
-        """
-        Отправляет каждый параметр в теплицу через DATA модуль.
-        Ошибки не останавливают обработку остальных параметров.
-        """
         try:
-            # Отправка расписания света на сервер
-            # Свет имеет только режим m=3 (расписание)
-            light_duration = int(params.get("light_duration", 16)) * 3600
+            raw_duration = params.get("light_duration", 16)
+            # clamp на случай прямого вызова минуя adjust_ai_params
+            light_hours = self._clamp_light(raw_duration)
+            light_seconds = int(light_hours) * 3600
+    
             _ = await send_timers(
                 [
                     Timer(
@@ -135,19 +133,21 @@ class Controller:
                         data=TimerData(
                             dbegin=0,
                             dskip=0,
-                            table=[TableItem(t1=25200, t2=light_duration)],
+                            table=[TableItem(t1=25200, t2=light_seconds)],
                         ),
                     )
                 ]
             )
         except Exception:
             traceback.print_exc()
-
+    
         for param_name, value in params.items():
             if param_name not in YIELDIZER_PARAM_MAP:
-                print(f"[Controller] Unknown param '{param_name}', skipping")
+                # light_duration не в MAP — это нормально, уже обработан выше
+                if param_name != "light_duration":
+                    print(f"[Controller] Unknown param '{param_name}', skipping")
                 continue
-
+    
             ns, key = YIELDIZER_PARAM_MAP[param_name]
             try:
                 success = await set_parameter(ns, key, value)
@@ -157,6 +157,11 @@ class Controller:
                     print(f"[Controller] Failed to set {ns}/{key} = {value}")
             except Exception as e:
                 print(f"[Controller] Error setting {ns}/{key}: {e}")
+    
+    @staticmethod
+    def _clamp_light(val: float) -> float:
+        """light_duration: от 12 до 18 часов."""
+        return max(12.0, min(18.0, float(val)))
 
     def get_last_params(self) -> Optional[dict]:
         return self._last_params
